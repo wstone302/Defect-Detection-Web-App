@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <title>缺陷偵測平台</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background-color: #f4f4f4;
+      margin: 0;
+      padding: 40px;
+      color: #333;
+    }
+
+    h2 {
+      background-color: #0077b6;
+      color: white;
+      padding: 12px 16px;
+      border-radius: 8px;
+      font-size: 18px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    section {
+      background: white;
+      border-radius: 10px;
+      padding: 20px;
+      margin-bottom: 30px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    }
+
+    input[type="file"], button {
+      padding: 8px 12px;
+      margin-top: 10px;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+    }
+
+    button {
+      background-color: #0077b6;
+      color: white;
+      cursor: pointer;
+      border: none;
+    }
+
+    button:hover {
+      background-color: #005f87;
+    }
+
+    img, video, canvas {
+      max-width: 100%;
+      margin-top: 15px;
+      border-radius: 6px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+    }
+
+    #result-info, #video-info {
+      margin-top: 10px;
+      font-weight: 500;
+    }
+
+    a {
+      display: inline-block;
+      margin-top: 10px;
+      text-decoration: none;
+      color: #0077b6;
+      font-weight: bold;
+    }
+
+    a:hover {
+      text-decoration: underline;
+    }
+  </style>
+</head>
+<body>
+
+  <section>
+    <h2>📷 上傳圖片進行偵測</h2>
+    <form id="upload-form">
+      <input type="file" name="file" accept="image/*" required>
+      <br><button type="submit">開始偵測</button>
+    </form>
+    <div id="result-info"></div>
+    <img id="result-image" alt="圖片偵測結果">
+  </section>
+
+  <!-- <section>
+    <h2>🎞️ 上傳影片進行偵測</h2>
+    <form id="video-form">
+      <input type="file" name="file" accept="video/*" required>
+      <br><button type="submit">偵測影片</button>
+    </form>
+    <div id="video-info"></div>
+    <video id="result-video" controls></video>
+    <div id="download-link"></div>
+  </section> -->
+  
+  <section>
+    <h2>🧠 同步播放影片進行偵測</h2>
+    <input type="file" id="local-video-input" accept="video/*">
+    <br>
+    <video id="local-video" width="600" controls muted></video>
+    <canvas id="local-canvas" width="600" height="300"></canvas>
+   </section>
+
+  <section>
+    <h2>🎥 即時攝影機偵測</h2>
+    <video id="webcam" autoplay muted width="320" height="240" style="border: 1px solid #ccc;"></video>
+    <canvas id="output" width="320" height="240"></canvas>
+  </section>
+
+  <script>
+    // 上傳圖片偵測
+    document.getElementById("upload-form").onsubmit = async (e) => {
+      e.preventDefault();
+      const formData = new FormData(e.target);
+      const res = await fetch("/detect", { method: "POST", body: formData });
+      const result = await res.json();
+      if (result.error) {
+        alert("❌ 偵測失敗：" + result.error);
+        return;
+    }
+
+      document.getElementById("result-info").innerHTML =
+        Object.entries(result.class_counts).map(([cls, count]) => `${cls}：${count} 個`).join("<br>");
+      document.getElementById("result-image").src = `/get_image?path=${encodeURIComponent(result.image_path)}`;
+    };
+
+    // 上傳影片偵測
+    document.getElementById("video-form").onsubmit = async (e) => {
+      e.preventDefault();
+      const file = e.target.querySelector('input[type=file]').files[0];
+        if (!file || !/\.(mp4|avi|mov)$/i.test(file.name)) {
+        alert("請上傳 .mp4 / .avi / .mov 格式的影片");
+        return;
+        }
+      const formData = new FormData(e.target);
+      const res = await fetch("/video_detect", { method: "POST", body: formData });
+      const result = await res.json();
+
+      document.getElementById("video-info").innerHTML =
+        Object.entries(result.class_counts).map(([cls, count]) => `${cls}：${count} 個`).join("<br>");
+      const path = `/get_image?path=${encodeURIComponent(result.video_path)}`;
+      document.getElementById("result-video").src = path;
+      document.getElementById("download-link").innerHTML =
+        `<a href="${path}" download>⬇️ 下載成果影片</a>`;
+    };
+
+    // 即時攝影機推論
+    const webcam = document.getElementById('webcam');
+    const canvas = document.getElementById('output');
+    const ctx = canvas.getContext('2d');
+
+    async function startWebcam() {
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+            webcam.srcObject = stream;
+
+            setInterval(async () => {
+            ctx.drawImage(webcam, 0, 0, canvas.width, canvas.height);
+            canvas.toBlob(async (blob) => {
+                const formData = new FormData();
+                formData.append("file", blob, "webcam.jpg");
+                const res = await fetch("/webcam_detect", { method: "POST", body: formData });
+                const imgBlob = await res.blob();
+                const imgURL = URL.createObjectURL(imgBlob);
+                const img = new Image();
+                img.onload = () => ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                img.src = imgURL;
+            }, "image/jpeg");
+            }, 1500);
+        } catch (err) {
+            alert("⚠️ 無法啟動攝影機，請確認攝影機是否存在並允許權限。\n錯誤訊息：" + err.message);
+            console.error(err);
+        }
+    }
+
+    startWebcam();
+
+    // 同步播放影片偵測
+    const localVideo = document.getElementById("local-video");
+    const localCanvas = document.getElementById("local-canvas");
+    const localCtx = localCanvas.getContext("2d");
+
+    let localTimer;
+
+    document.getElementById("local-video-input").addEventListener("change", function () {
+        const file = this.files[0];
+        if (!file) return;
+
+        const url = URL.createObjectURL(file);
+        localVideo.src = url;
+
+        localVideo.onplay = () => {
+        if (localTimer) clearInterval(localTimer);
+
+        localTimer = setInterval(() => {
+            if (localVideo.paused || localVideo.ended) return;
+            localCtx.drawImage(localVideo, 0, 0, localCanvas.width, localCanvas.height);
+
+            localCanvas.toBlob(async (blob) => {
+            const formData = new FormData();
+            formData.append("file", blob, "frame.jpg");
+
+            const res = await fetch("/detect_frame", {
+                method: "POST",
+                body: formData
+            });
+
+            if (!res.ok) return;
+            const resultBlob = await res.blob();
+            const imgURL = URL.createObjectURL(resultBlob);
+            const resultImg = new Image();
+            resultImg.onload = () => localCtx.drawImage(resultImg, 0, 0, localCanvas.width, localCanvas.height);
+            resultImg.src = imgURL;
+            }, "image/jpeg");
+        }, 500); // 每秒推論一次
+        };
+
+        localVideo.onpause = () => clearInterval(localTimer);
+        localVideo.onended = () => clearInterval(localTimer);
+    });
+
+  </script>
+
+</body>
+</html>
