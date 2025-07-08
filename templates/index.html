@@ -86,6 +86,15 @@
     <img id="result-image" alt="圖片偵測結果">
   </section>
 
+  <section>
+    <h2>🗂️ 上傳整個資料夾批次偵測</h2>
+    <form id="folder-form">
+      <input type="file" id="folder-input" webkitdirectory directory multiple accept="image/*" required>
+      <br><button type="submit">開始批次偵測</button>
+    </form>
+    <div id="folder-result"></div>
+  </section>
+
   <!-- <section>
     <h2>🎞️ 上傳影片進行偵測</h2>
     <form id="video-form">
@@ -118,16 +127,54 @@
       const formData = new FormData(e.target);
       const res = await fetch("/detect", { method: "POST", body: formData });
       const result = await res.json();
+
       if (result.error) {
         alert("❌ 偵測失敗：" + result.error);
         return;
-    }
+      }
 
       document.getElementById("result-info").innerHTML =
         Object.entries(result.class_counts).map(([cls, count]) => `${cls}：${count} 個`).join("<br>");
       document.getElementById("result-image").src = `/get_image?path=${encodeURIComponent(result.image_path)}`;
+      document.getElementById("result-image").style.display = "block";
     };
 
+    // 資料夾批次偵測
+    document.getElementById("folder-form").onsubmit = async (e) => {
+      e.preventDefault();
+      const input = document.getElementById("folder-input");
+      const files = Array.from(input.files).filter(file => file.type.startsWith("image/"));
+
+      if (files.length === 0) {
+        alert("⚠️ 資料夾中沒有圖片！");
+        return;
+      }
+
+      const folderResult = document.getElementById("folder-result");
+      folderResult.innerHTML = "🔄 正在批次偵測中，請稍候...<br><br>";
+
+      let allResults = "";
+      for (let i = 0; i < files.length; i++) {
+        const formData = new FormData();
+        formData.append("file", files[i]);
+
+        const res = await fetch("/detect", { method: "POST", body: formData });
+        const result = await res.json();
+
+        allResults += `<p><strong>📁 ${files[i].name}</strong></p>`;
+        if (result.error) {
+          allResults += `<p style="color:red;">❌ 偵測失敗：${result.error}</p><hr>`;
+          continue;
+        }
+
+        allResults += Object.entries(result.class_counts)
+          .map(([cls, count]) => `${cls}：${count} 個`).join("<br>");
+        allResults += `<br><img src="/get_image?path=${encodeURIComponent(result.image_path)}" style="max-width:100%; border:1px solid #ccc;"><hr>`;
+      }
+
+      folderResult.innerHTML = allResults;
+    };
+    
     // 上傳影片偵測
     document.getElementById("video-form").onsubmit = async (e) => {
       e.preventDefault();
