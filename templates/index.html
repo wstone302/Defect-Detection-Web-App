@@ -95,7 +95,7 @@
     <div id="folder-result"></div>
   </section>
 
-  <!-- <section>
+  <section>
     <h2>🎞️ 上傳影片進行偵測</h2>
     <form id="video-form">
       <input type="file" name="file" accept="video/*" required>
@@ -104,7 +104,7 @@
     <div id="video-info"></div>
     <video id="result-video" controls></video>
     <div id="download-link"></div>
-  </section> -->
+  </section>
   
   <section>
     <h2>🧠 同步播放影片進行偵測</h2>
@@ -112,7 +112,9 @@
     <br>
     <video id="local-video" width="600" controls muted></video>
     <canvas id="local-canvas" width="600" height="300"></canvas>
-   </section>
+    <br>
+    <button id="download-excel-btn" style="display:none; margin-top:10px;">📄 下載 Excel 結果</button>
+  </section>
 
   <section>
     <h2>🎥 即時攝影機偵測</h2>
@@ -230,45 +232,93 @@
     const localVideo = document.getElementById("local-video");
     const localCanvas = document.getElementById("local-canvas");
     const localCtx = localCanvas.getContext("2d");
+    const downloadBtn = document.getElementById("download-excel-btn");
 
     let localTimer;
+    let detectionLog = [];
+    let videoFileName = "";
 
     document.getElementById("local-video-input").addEventListener("change", function () {
-        const file = this.files[0];
-        if (!file) return;
+      const file = this.files[0];
+      if (!file) return;
 
-        const url = URL.createObjectURL(file);
-        localVideo.src = url;
+      videoFileName = file.name;
+      const url = URL.createObjectURL(file);
+      localVideo.src = url;
+      detectionLog = [];  // 清空紀錄
+      downloadBtn.style.display = "none";
 
-        localVideo.onplay = () => {
+      localVideo.onplay = () => {
         if (localTimer) clearInterval(localTimer);
 
         localTimer = setInterval(() => {
-            if (localVideo.paused || localVideo.ended) return;
-            localCtx.drawImage(localVideo, 0, 0, localCanvas.width, localCanvas.height);
+          if (localVideo.paused || localVideo.ended) return;
+          localCtx.drawImage(localVideo, 0, 0, localCanvas.width, localCanvas.height);
 
-            localCanvas.toBlob(async (blob) => {
+          localCanvas.toBlob(async (blob) => {
             const formData = new FormData();
             formData.append("file", blob, "frame.jpg");
 
             const res = await fetch("/detect_frame", {
-                method: "POST",
-                body: formData
+              method: "POST",
+              body: formData
             });
 
             if (!res.ok) return;
-            const resultBlob = await res.blob();
-            const imgURL = URL.createObjectURL(resultBlob);
+            const result = await res.json();
+
+            // 更新畫面
+            const imgURL = URL.createObjectURL(await (await fetch(`/get_image?path=${result.image_path}`)).blob());
             const resultImg = new Image();
             resultImg.onload = () => localCtx.drawImage(resultImg, 0, 0, localCanvas.width, localCanvas.height);
             resultImg.src = imgURL;
-            }, "image/jpeg");
-        }, 500); // 每秒推論一次
-        };
 
-        localVideo.onpause = () => clearInterval(localTimer);
-        localVideo.onended = () => clearInterval(localTimer);
+            // 加入紀錄
+            if (Object.keys(result.class_counts).length > 0) {
+              detectionLog.push({
+                filename: videoFileName,
+                timestamp: localVideo.currentTime.toFixed(2) + " 秒",
+                classes: result.class_counts
+              });
+            }
+          }, "image/jpeg");
+        }, 500); // 每秒兩幀
+      };
+
+      localVideo.onpause = localVideo.onended = () => {
+        clearInterval(localTimer);
+        if (detectionLog.length > 0) {
+          downloadBtn.style.display = "inline-block";
+        }
+      };
     });
+
+    // 改寫 downloadBtn.onclick 直接上傳整部影片而不是送 log
+    downloadBtn.onclick = async () => {
+      const fileInput = document.getElementById("local-video-input");
+      const file = fileInput.files[0];
+      if (!file) {
+        alert("請先選擇影片");
+        return;
+      }
+
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const res = await fetch("/video_detect", {
+        method: "POST",
+        body: formData
+      });
+
+      const result = await res.json();
+      if (result.excel_path) {
+        window.open(`/get_file?path=${encodeURIComponent(result.excel_path)}`, "_blank");
+      } else {
+        alert("❌ 偵測失敗或無缺陷！");
+      }
+    };
+
+
 
   </script>
 
