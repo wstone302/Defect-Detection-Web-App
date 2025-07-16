@@ -126,7 +126,6 @@ def generate_excel_with_images(image_info_list, output_path):
     wb = Workbook()
     ws = wb.active
     ws.title = "結果"
-    #ws.sheet_view.showGridLines = False  # 隱藏預設格線
 
     for col in range(1, 50):
         ws.column_dimensions[get_column_letter(col)].width = 13
@@ -143,8 +142,8 @@ def generate_excel_with_images(image_info_list, output_path):
 
     for idx, info in enumerate(image_info_list):
         img = XLImage(info["image_path"])
-        img.width = 350
-        img.height = 260
+        img.width = 400
+        img.height = 300
 
         # 設定圖片起始欄
         col = col_offset if idx % 2 == 0 else col_offset + 8
@@ -154,29 +153,25 @@ def generate_excel_with_images(image_info_list, output_path):
         # 說明列
         text_row = row + 13
         ws.merge_cells(start_row=text_row, start_column=col, end_row=text_row, end_column=col + 4)
-        cell = ws.cell(row=text_row, column=col)
-        cell.value = f'{info["filename"]} {info["timestamp"]} {info["label"]}'
-        cell.alignment = Alignment(horizontal='center', vertical='center')
+        desc_cell = ws.cell(row=text_row, column=col)
+        desc_cell.value = f'{info["filename"]} {info["timestamp"]} {info["label"]}'
+        desc_cell.alignment = Alignment(horizontal='center', vertical='center')
 
-        # ➤ 加上整個區塊的外框線（13+1列高，5欄寬）
+        # ➤ 加上整個區塊的外框線（圖片13列 + 說明列）
         for r in range(row, text_row + 1):
-            for c in range(col, col + 4):
+            for c in range(col, col + 5):  # col+5 含 col+4
                 cell = ws.cell(row=r, column=c)
-                if not isinstance(cell, MergedCell):
-                    cell.value = cell.value if cell.value else ""
 
-                # 加外框線（圖片區與說明區都有）
+                # 外框判斷條件
                 top = thin_border.top if r == row or r == text_row else None
                 bottom = thin_border.bottom if r == text_row else None
                 left = thin_border.left if c == col else None
-                right = thin_border.right if c == col + 3 else None
+                right = thin_border.right if c == col + 4 else None
 
                 cell.border = Border(top=top, bottom=bottom, left=left, right=right)
 
-
-
         if idx % 2 == 1:
-            row += 16  # 換下一列圖（含圖片13列 + 說明1列 + 間隔2列）
+            row += 16  # 換下一列圖（13圖 + 1說明 + 2空格）
 
     wb.save(output_path)
 
