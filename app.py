@@ -18,6 +18,18 @@ app = Flask(__name__)
 UPLOAD_FOLDER = 'static/uploads'
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
+# 英文類別 ➝ 繁體中文
+LABEL_MAPPING = {
+    "rust": "鏽蝕",
+    "peeling_paint": "漆面剝落",
+    "rupture": "斷裂",
+    "burnt": "燒焦",
+    "expansion": "膨脹",
+    "missing": "缺件",
+    "oil_leakage": "漏油",
+    "unknown_object": "異常物"
+}
+
 # 載入模型
 model = torch.hub.load('yolov5', 'custom', path='best.pt', source='local')
 model.conf = 0.25  # 信心閾值
@@ -127,9 +139,11 @@ def generate_excel_with_images(image_info_list, output_path):
     ws = wb.active
     ws.title = "結果"
 
+    # 設定欄寬
     for col in range(1, 50):
         ws.column_dimensions[get_column_letter(col)].width = 13
 
+    # 設定框線樣式
     thin_border = Border(
         left=Side(style='thin', color='000000'),
         right=Side(style='thin', color='000000'),
@@ -137,32 +151,40 @@ def generate_excel_with_images(image_info_list, output_path):
         bottom=Side(style='thin', color='000000')
     )
 
-    col_offset = 1  # 從 B 欄開始
-    row = 1
+    col_offset = 1  # 從第1欄開始
+    row = 1         # 從第1列開始
 
     for idx, info in enumerate(image_info_list):
         img = XLImage(info["image_path"])
         img.width = 400
         img.height = 300
 
-        # 設定圖片起始欄
+        # 設定圖片起始欄位
         col = col_offset if idx % 2 == 0 else col_offset + 8
         cell_position = f"{get_column_letter(col)}{row}"
         ws.add_image(img, cell_position)
+
+        # 設定圖片區的列高，避免圖片超出
+        for r in range(row, row + 13):
+            ws.row_dimensions[r].height = 23  # 每列約 23pt（合計 ≈ 300px）
 
         # 說明列
         text_row = row + 13
         ws.merge_cells(start_row=text_row, start_column=col, end_row=text_row, end_column=col + 4)
         desc_cell = ws.cell(row=text_row, column=col)
-        desc_cell.value = f'{info["filename"]} {info["timestamp"]} {info["label"]}'
+        # desc_cell.value = f'{info["filename"]} {info["timestamp"]} {info["label"]}'
+        # 類別中文轉換（支援多個以、分隔）
+        zh_labels = "、".join([LABEL_MAPPING.get(label, label) for label in info["label"].split("、")])
+        desc_cell.value = f'{info["filename"]} {info["timestamp"]} {zh_labels}'
         desc_cell.alignment = Alignment(horizontal='center', vertical='center')
 
-        # ➤ 加上整個區塊的外框線（圖片13列 + 說明列）
+        # 加上整個區塊的外框線（圖片13列 + 說明列）
         for r in range(row, text_row + 1):
-            for c in range(col, col + 5):  # col+5 含 col+4
+            for c in range(col, col + 5):
                 cell = ws.cell(row=r, column=c)
+                if not isinstance(cell, MergedCell):
+                    _ = cell.value  # 不設定值避免 MergedCell 錯誤
 
-                # 外框判斷條件
                 top = thin_border.top if r == row or r == text_row else None
                 bottom = thin_border.bottom if r == text_row else None
                 left = thin_border.left if c == col else None
@@ -170,8 +192,9 @@ def generate_excel_with_images(image_info_list, output_path):
 
                 cell.border = Border(top=top, bottom=bottom, left=left, right=right)
 
+        # 換到下一列（雙欄模式）
         if idx % 2 == 1:
-            row += 16  # 換下一列圖（13圖 + 1說明 + 2空格）
+            row += 16  # 13列圖片 + 1列說明 + 2列間隔
 
     wb.save(output_path)
 
