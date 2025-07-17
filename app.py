@@ -156,7 +156,7 @@ def generate_excel_with_images(image_info_list, output_path):
 
     for idx, info in enumerate(image_info_list):
         img = XLImage(info["image_path"])
-        img.width = 400
+        img.width = 450
         img.height = 300
 
         # 設定圖片起始欄位
@@ -165,25 +165,25 @@ def generate_excel_with_images(image_info_list, output_path):
         ws.add_image(img, cell_position)
 
         # 設定圖片區的列高，避免圖片超出
-        for r in range(row, row + 13):
-            ws.row_dimensions[r].height = 23  # 每列約 23pt（合計 ≈ 300px）
+        for r in range(row, row + 10):  # ↓↓↓ 修改這邊 ↓↓↓
+            ws.row_dimensions[r].height = 23
 
         # 說明列
-        text_row = row + 13
+        text_row = row + 10  # ↓↓↓ 修改這邊 ↓↓↓
         ws.merge_cells(start_row=text_row, start_column=col, end_row=text_row, end_column=col + 4)
         desc_cell = ws.cell(row=text_row, column=col)
-        # desc_cell.value = f'{info["filename"]} {info["timestamp"]} {info["label"]}'
-        # 類別中文轉換（支援多個以、分隔）
+
+        # 中文轉換
         zh_labels = "、".join([LABEL_MAPPING.get(label, label) for label in info["label"].split("、")])
         desc_cell.value = f'{info["filename"]} {info["timestamp"]} {zh_labels}'
         desc_cell.alignment = Alignment(horizontal='center', vertical='center')
 
-        # 加上整個區塊的外框線（圖片13列 + 說明列）
+        # 加上外框線（圖片區 + 說明列）
         for r in range(row, text_row + 1):
             for c in range(col, col + 5):
                 cell = ws.cell(row=r, column=c)
                 if not isinstance(cell, MergedCell):
-                    _ = cell.value  # 不設定值避免 MergedCell 錯誤
+                    _ = cell.value
 
                 top = thin_border.top if r == row or r == text_row else None
                 bottom = thin_border.bottom if r == text_row else None
@@ -192,9 +192,10 @@ def generate_excel_with_images(image_info_list, output_path):
 
                 cell.border = Border(top=top, bottom=bottom, left=left, right=right)
 
-        # 換到下一列（雙欄模式）
+        # 換下一列（雙欄模式）
         if idx % 2 == 1:
-            row += 16  # 13列圖片 + 1列說明 + 2列間隔
+            row += 13  # ↓↓↓ 修改這邊 ↓↓↓（10圖 + 1說明 + 2空白）
+
 
     wb.save(output_path)
 
